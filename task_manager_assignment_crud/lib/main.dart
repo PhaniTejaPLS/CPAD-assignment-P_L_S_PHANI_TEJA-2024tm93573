@@ -1,6 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:parse_server_sdk_flutter/parse_server_sdk_flutter.dart';
 
-void main() {
+void main()  async {
+
+  const keyApplicationId = 'oX8yRkufp4w0IGRlPsXIPT69eLIR0N6IYD7ILhwC';
+  const keyClientKey = 'RMfauDFWuI0G9PXC4CpoOhsM38wmyZz6TbjoogGW';
+  const keyParseServerUrl = "https://parseapi.back4app.com";
+
+  await Parse().initialize(keyApplicationId, keyParseServerUrl, clientKey: keyClientKey, debug:true);
+
+
+  var firstObject = ParseObject('FirstClass')
+      ..set(
+         'message', 'Hey, Parse is now connected!🙂');
+ await firstObject.save();
+
   runApp(const MyApp());
 }
 
