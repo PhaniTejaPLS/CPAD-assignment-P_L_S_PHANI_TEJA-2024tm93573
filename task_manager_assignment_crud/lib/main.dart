@@ -579,8 +579,18 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
     _taskFuture = _fetchTasks();
   }
 
+  Future<ParseUser> _requireCurrentUser() async {
+    final currentUser = await ParseUser.currentUser() as ParseUser?;
+    if (currentUser == null) {
+      throw Exception('No logged in user found');
+    }
+    return currentUser;
+  }
+
   Future<List<Task>> _fetchTasks() async {
+    final currentUser = await _requireCurrentUser();
     final query = QueryBuilder<ParseObject>(ParseObject('Task'))
+      ..whereEqualTo('user', currentUser.toPointer())
       ..orderByAscending('dueDate');
 
     final response = await query.find();
@@ -592,10 +602,12 @@ class _TaskManagerScreenState extends State<TaskManagerScreen> {
   }
 
   Future<Task> _createTask(String title, DateTime dueDate) async {
+    final currentUser = await _requireCurrentUser();
     final taskObject = ParseObject('Task')
       ..set('title', title)
       ..set('dueDate', dueDate)
-      ..set('isCompleted', false);
+      ..set('isCompleted', false)
+      ..set('user', currentUser.toPointer());
 
     final response = await taskObject.save();
     if (!response.success || response.results == null || response.results!.isEmpty) {
