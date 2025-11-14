@@ -3,6 +3,8 @@ import 'package:parse_server_sdk_flutter/parse_server_sdk_flutter.dart';
 
 void main()  async {
 
+  WidgetsFlutterBinding.ensureInitialized();
+
   const keyApplicationId = 'oX8yRkufp4w0IGRlPsXIPT69eLIR0N6IYD7ILhwC';
   const keyClientKey = 'RMfauDFWuI0G9PXC4CpoOhsM38wmyZz6TbjoogGW';
   const keyParseServerUrl = "https://parseapi.back4app.com";
@@ -10,127 +12,377 @@ void main()  async {
   await Parse().initialize(keyApplicationId, keyParseServerUrl, clientKey: keyClientKey, debug:true);
 
 
-  var firstObject = ParseObject('FirstClass')
-      ..set(
-         'message', 'Hey, Parse is now connected!🙂');
- await firstObject.save();
+ //  var firstObject = ParseObject('FirstClass')
+ //      ..set(
+ //         'message', 'Hey, Parse is now connecterd!🙂');
+ // await firstObject.save();
 
-  runApp(const MyApp());
+  runApp(const TaskManagerApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class TaskManagerApp extends StatelessWidget {
+  const TaskManagerApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Task Manager',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+        colorSchemeSeed: Colors.indigo,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const TaskManagerScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class Task {
+  Task({
+    required this.objectId,
+    required this.title,
+    required this.dueDate,
+    required this.isCompleted,
+  });
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
+  final String objectId;
   final String title;
+  final DateTime dueDate;
+  final bool isCompleted;
 
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  Task copyWith({
+    String? objectId,
+    String? title,
+    DateTime? dueDate,
+    bool? isCompleted,
+  }) {
+    return Task(
+      objectId: objectId ?? this.objectId,
+      title: title ?? this.title,
+      dueDate: dueDate ?? this.dueDate,
+      isCompleted: isCompleted ?? this.isCompleted,
+    );
+  }
+
+  static Task fromParseObject(ParseObject parseObject) {
+    return Task(
+      objectId: parseObject.objectId!,
+      title: parseObject.get<String>('title') ?? '',
+      dueDate: parseObject.get<DateTime>('dueDate') ?? DateTime.now(),
+      isCompleted: parseObject.get<bool>('isCompleted') ?? false,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'title': title,
+        'dueDate': dueDate,
+        'isCompleted': isCompleted,
+      };
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class TaskManagerScreen extends StatefulWidget {
+  const TaskManagerScreen({super.key});
 
-  void _incrementCounter() {
+  @override
+  State<TaskManagerScreen> createState() => _TaskManagerScreenState();
+}
+
+class _TaskManagerScreenState extends State<TaskManagerScreen> {
+  late Future<List<Task>> _taskFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _taskFuture = _fetchTasks();
+  }
+
+  Future<List<Task>> _fetchTasks() async {
+    final query = QueryBuilder<ParseObject>(ParseObject('Task'))
+      ..orderByAscending('dueDate');
+
+    final response = await query.find();
+    if(response.isEmpty) {
+      return [];
+    }
+
+    return response.map((o) => Task.fromParseObject(o)).toList();
+  }
+
+  Future<Task> _createTask(String title, DateTime dueDate) async {
+    final taskObject = ParseObject('Task')
+      ..set('title', title)
+      ..set('dueDate', dueDate)
+      ..set('isCompleted', false);
+
+    final response = await taskObject.save();
+    if (!response.success || response.results == null || response.results!.isEmpty) {
+      throw Exception(response.error?.message ?? 'Failed to create task');
+    }
+
+    return Task.fromParseObject(response.results!.first as ParseObject);
+  }
+
+  Future<Task> _updateTask(Task task) async {
+    final taskObject = ParseObject('Task')
+      ..objectId = task.objectId
+      ..set('title', task.title)
+      ..set('dueDate', task.dueDate)
+      ..set('isCompleted', task.isCompleted);
+
+    final response = await taskObject.save();
+    if (!response.success) {
+      throw Exception(response.error?.message ?? 'Failed to update task');
+    }
+
+    return task;
+  }
+
+  Future<void> _deleteTask(Task task) async {
+    final taskObject = ParseObject('Task')..objectId = task.objectId;
+
+    final response = await taskObject.delete();
+    if (!response.success) {
+      throw Exception(response.error?.message ?? 'Failed to delete task');
+    }
+  }
+
+  Future<void> _handleRefresh() async {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _taskFuture = _fetchTasks();
     });
+  }
+
+  Future<void> _showAddTaskDialog() async {
+    String? taskTitle;
+    DateTime? dueDate;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            Future<void> pickDate() async {
+              final now = DateTime.now();
+              final selectedDate = await showDatePicker(
+                context: context,
+                initialDate: dueDate ?? now,
+                firstDate: DateTime(now.year - 1),
+                lastDate: DateTime(now.year + 5),
+              );
+
+              if (selectedDate != null) {
+                setLocalState(() => dueDate = selectedDate);
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Add Task'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Task name',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) => taskTitle = value.trim(),
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: pickDate,
+                    icon: const Icon(Icons.calendar_today),
+                    label: Text(
+                      dueDate == null
+                          ? 'Select due date'
+                          : MaterialLocalizations.of(context)
+                              .formatMediumDate(dueDate!),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: Navigator.of(context).pop,
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    if ((taskTitle ?? '').isEmpty || dueDate == null) return;
+                    Navigator.of(context).pop(true);
+                  },
+                  child: const Text('Add'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed == true && taskTitle != null && dueDate != null) {
+      try {
+        final newTask = await _createTask(taskTitle!, dueDate!);
+        setState(() {
+          _taskFuture = _taskFuture.then((tasks) => [...tasks, newTask]);
+        });
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error creating task: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleTask(Task task, bool? value) async {
+    final updatedTask = task.copyWith(isCompleted: value ?? false);
+
+    try {
+      await _updateTask(updatedTask);
+      setState(() {
+        _taskFuture = _taskFuture.then((tasks) {
+          final index = tasks.indexWhere((t) => t.objectId == task.objectId);
+          if (index == -1) return tasks;
+          final updated = [...tasks];
+          updated[index] = updatedTask;
+          return updated;
+        });
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error updating task: $error')),
+      );
+    }
+  }
+
+  Future<void> _deleteTaskWithConfirmation(Task task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Task'),
+        content: Text('Delete "${task.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: Navigator.of(context).pop,
+            child: const Text('Cancel'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _deleteTask(task);
+        setState(() {
+          _taskFuture = _taskFuture.then(
+            (tasks) => tasks.where((t) => t.objectId != task.objectId).toList(),
+          );
+        });
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting task: $error')),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Task Manager'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _handleRefresh,
+          ),
+        ],
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+      body: FutureBuilder<List<Task>>(
+        future: _taskFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Unable to load tasks.',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(snapshot.error.toString()),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: _handleRefresh,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          final tasks = snapshot.data ?? [];
+          if (tasks.isEmpty) {
+            return const Center(
+              child: Text(
+                'No tasks yet.\nTap + to add your first task.',
+                textAlign: TextAlign.center,
+              ),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: _handleRefresh,
+            child: ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: tasks.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final task = tasks[index];
+                return Card(
+                  child: ListTile(
+                    leading: Checkbox(
+                      value: task.isCompleted,
+                      onChanged: (value) => _toggleTask(task, value),
+                    ),
+                    title: Text(
+                      task.title,
+                      style: task.isCompleted
+                          ? const TextStyle(
+                              decoration: TextDecoration.lineThrough,
+                              color: Colors.grey,
+                            )
+                          : null,
+                    ),
+                    subtitle: Text(
+                      'Due: ${MaterialLocalizations.of(context).formatMediumDate(task.dueDate)}',
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: () => _deleteTaskWithConfirmation(task),
+                    ),
+                  ),
+                );
+              },
             ),
-          ],
-        ),
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
+        onPressed: _showAddTaskDialog,
         child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      ),
     );
   }
 }
